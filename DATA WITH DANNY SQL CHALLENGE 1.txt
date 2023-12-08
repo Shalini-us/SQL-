@@ -1,0 +1,317 @@
+DATA WITH DANNY SQL CHALLENGE 1 - Danny's Dinner 
+
+use dannys_diner;
+
+CREATE TABLE Sales1 (
+  "customer_id" VARCHAR(1),
+  "order_date" DATE,
+  "product_id" INTEGER
+);
+
+INSERT INTO sales1
+  ("customer_id", "order_date", "product_id")
+VALUES
+  ('A', '2021-01-01', '1'),
+  ('A', '2021-01-01', '2'),
+  ('A', '2021-01-07', '2'),
+  ('A', '2021-01-10', '3'),
+  ('A', '2021-01-11', '3'),
+  ('A', '2021-01-11', '3'),
+  ('B', '2021-01-01', '2'),
+  ('B', '2021-01-02', '2'),
+  ('B', '2021-01-04', '1'),
+  ('B', '2021-01-11', '1'),
+  ('B', '2021-01-16', '3'),
+  ('B', '2021-02-01', '3'),
+  ('C', '2021-01-01', '3'),
+  ('C', '2021-01-01', '3'),
+  ('C', '2021-01-07', '3');
+ 
+
+CREATE TABLE menu (
+  "product_id" INTEGER,
+  "product_name" VARCHAR(5),
+  "price" INTEGER
+);
+
+INSERT INTO menu
+  ("product_id", "product_name", "price")
+VALUES
+  ('1', 'sushi', '10'),
+  ('2', 'curry', '15'),
+  ('3', 'ramen', '12');
+  
+
+CREATE TABLE members (
+  "customer_id" VARCHAR(1),
+  "join_date" DATE
+);
+
+INSERT INTO members
+  ("customer_id", "join_date")
+VALUES
+  ('A', '2021-01-07'),
+  ('B', '2021-01-09');
+
+
+Case Study Questions
+   --------------------*/
+
+-- 1. What is the total amount each customer spent at the restaurant?
+Select sa.customer_id,Sum(menu.price)as total_amount_spent
+from sales1 sa
+join menu menu
+on sa.product_id = menu.product_id
+Group by sa.customer_id;
+
+customer_id	total_amount_spent
+A	76
+B	74
+C	36
+
+-- 2. How many days has each customer visited the restaurant?
+Select customer_id, count(Distinct order_date)as days
+from sales1
+group by customer_id
+
+customer_id	days
+A	4
+B	6
+C	2
+
+-- 3. What was the first item from the menu purchased by each customer?
+
+Select TOP(3)sa.customer_id,sa.order_date,men.product_id,men.product_name, 
+rank() over (partition by sa.order_date order by sa.order_date)as rank1, 
+case
+When rank() over (partition by sa.order_date order by sa.order_date) <2 then 'rank1' 
+else Null end as first_item
+from sales1 sa
+join menu men
+on sa.product_id=men.product_id
+order by rank1;
+
+with final as (
+Select sa.customer_id,sa.order_date,men.product_id,men.product_name, 
+rank() over (partition by sa.customer_id order by sa.order_date)as rank1
+from sales1 sa
+join menu men
+on sa.product_id=men.product_id)
+Select * from final where rank1 =1
+
+Select * from (
+Select sa.customer_id,sa.order_date,men.product_id,men.product_name, 
+rank() over (partition by sa.customer_id order by sa.order_date)as rank1
+from sales1 sa
+join menu men
+on sa.product_id=men.product_id)sub
+where sub.rank1 =1
+
+customer_id	order_date	product_id	product_name	rank1
+A	2021-01-01	1	sushi	1
+A	2021-01-01	2	curry	1
+B	2021-01-01	2	curry	1
+C	2021-01-01	3	ramen	1
+C	2021-01-01	3	ramen	1
+
+
+-- 4. What is the most purchased item on the menu and how many times was it purchased by all customers?
+
+Select menu.product_name,count(*)as no_of_times
+from sales1 sa
+join menu menu
+on sa.product_id=menu.product_id
+group by menu.product_name
+
+
+product_name	no_of_times
+curry	4
+ramen	8
+sushi	3
+-- 5. Which item was the most popular for each customer?
+with final as(Select sa.customer_id,menu.product_name,count(*)as Total
+from sales1 sa
+join menu menu
+on sa.product_id=menu.product_id
+group by sa.customer_id,menu.product_name)
+
+Select customer_id,product_name,total,
+rank() over (partition by customer_id order by total Desc)as rank
+from final 
+
+customer_id	product_name	total	rank
+A	ramen	3	1
+A	curry	2	2
+A	sushi	1	3
+B	sushi	2	1
+B	curry	2	1
+B	ramen	2	1
+C	ramen	3	1
+
+-- 6. Which item was purchased first by the customer after they became a member?
+with final as (Select sa.customer_id,sa.order_date,join_date,menu.product_id,menu.product_name,
+rank() over (partition by sa.customer_id order by order_date)as ranking 
+from sales1 sa
+join menu menu
+on menu.product_id=sa.product_id
+join members m
+on sa.customer_id=m.customer_id
+where sa.order_date >= m.join_date)
+
+Select product_id,product_name,customer_id,order_date,join_date,ranking
+from final
+where ranking =1 
+
+product_id	product_name	customer_id	order_date	join_date	ranking
+2	curry	A	2021-01-07	2021-01-07	1
+1	sushi	B	2021-01-11	2021-01-09	1
+
+-- 7. Which item was purchased just before the customer became a member?
+Select sa.customer_id,order_date,join_date,product_name
+from sales1 sa
+left join members m
+on sa.customer_id=m.customer_id
+join menu menu
+on sa.product_id=menu.product_id
+where sa.order_date<m.join_date
+
+customer_id	order_date	join_date	product_name
+A	2021-01-01	2021-01-07	sushi
+A	2021-01-01	2021-01-07	curry
+B	2021-01-01	2021-01-09	curry
+B	2021-01-02	2021-01-09	curry
+B	2021-01-04	2021-01-09	sushi
+
+-- 8. What is the total items and amount spent for each member before they became a member?
+with results as(Select sa.*,m.join_date,menu.price,menu.product_name
+from sales1 sa
+left join members m
+on sa.customer_id=m.customer_id
+join menu menu
+on sa.product_id=menu.product_id
+where sa.order_date<m.join_date)
+
+select customer_id,count(Distinct product_name)as total_Items ,Sum(price)as amount_spent 
+from results
+group by customer_id
+
+
+customer_id	total_Items	amount_spent
+A	2	25
+B	2	40
+
+
+-- 9.  If each $1 spent equates to 10 points and sushi has a 2x points multiplier - how many points would each customer have?
+
+with final as (SELECt sa.customer_id,sa.product_id,menu.product_name,menu.price,
+case 
+when menu.product_name ='sushi' then 2*10*menu.price
+when menu.product_name = 'curry' then 10*price
+when menu.product_name = 'ramen' then 10*price
+else NULL
+end as points
+from Sales1 sa
+join menu menu
+on sa.product_id=menu.product_id)
+Select customer_id,sum(points)as total_points_by_cust_id from final 
+group by customer_id
+
+customer_id	total_points_by_cust_id
+A	860
+B	940
+C	360
+
+-- 10. In the first week after a customer joins the program (including their join date) they earn 2x points on all items, not just sushi 
+-- how many points do customer A and B have at the end of January?
+
+with final as (Select sa.customer_id,sa.product_id,sa.order_date,m.join_date,menu.product_name,menu.price,
+case 
+when menu.product_name ='sushi' then 2*menu.price
+when sa.order_date between m.join_date and dateadd(day,6,m.join_date) then 2*menu.price
+else menu.price end as points
+from sales1 sa
+join members m
+on sa.customer_id=m.customer_id
+join menu menu
+on sa.product_id=menu.product_id
+where sa.order_date < = '2021-01-31')
+Select customer_id,Sum(points)*10 as total_points from final 
+group by customer_id
+
+customer_id	total_points
+A	1370
+B	820 
+
+
+The following questions are related creating basic data tables that Danny and his team can use to quickly derive insights without needing to join the underlying tables using SQL.
+
+Recreate the following table output using the available data:
+
+customer_id	order_date	product_name	price	member
+A	2021-01-01	curry	15	N
+A	2021-01-01	sushi	10	N
+A	2021-01-07	curry	15	Y
+A	2021-01-10	ramen	12	Y
+A	2021-01-11	ramen	12	Y
+A	2021-01-11	ramen	12	Y
+B	2021-01-01	curry	15	N
+B	2021-01-02	curry	15	N
+B	2021-01-04	sushi	10	N
+B	2021-01-11	sushi	10	Y
+B	2021-01-16	ramen	12	Y
+B	2021-02-01	ramen	12	Y
+C	2021-01-01	ramen	12	N
+C	2021-01-01	ramen	12	N
+C	2021-01-07	ramen	12	N
+Rank All The Things
+
+Danny also requires further information about the ranking of customer products, but he purposely does not need the ranking for non-member purchases so he expects null ranking values for the records when customers are not yet part of the loyalty program.
+
+customer_id	order_date	product_name	price	member	ranking
+A	2021-01-01	curry	15	N	null
+A	2021-01-01	sushi	10	N	null
+A	2021-01-07	curry	15	Y	1
+A	2021-01-10	ramen	12	Y	2
+A	2021-01-11	ramen	12	Y	3
+A	2021-01-11	ramen	12	Y	3
+B	2021-01-01	curry	15	N	null
+B	2021-01-02	curry	15	N	null
+B	2021-01-04	sushi	10	N	null
+B	2021-01-11	sushi	10	Y	1
+B	2021-01-16	ramen	12	Y	2
+B	2021-02-01	ramen	12	Y	3
+C	2021-01-01	ramen	12	N	null
+C	2021-01-01	ramen	12	N	null
+C	2021-01-07	ramen	12	N	null
+
+with final as(Select sa.customer_id,sa.order_date,menu.price,menu.product_name,
+case 
+when sa.order_date<=m.join_date then 'N' 
+when m.join_date is null then 'N'
+else 'Y' end as members
+from sales1 sa
+LEFT join members m
+on sa.customer_id = m.customer_id
+join menu menu
+on sa.product_id=menu.product_id)
+select *,
+case 
+when members ='N' then Null
+else rank() over (partition by customer_id,members order by order_date) end as rancalc
+from final;
+
+A	2021-01-01	10	sushi	N	NULL
+A	2021-01-01	15	curry	N	NULL
+A	2021-01-07	15	curry	N	NULL
+A	2021-01-10	12	ramen	Y	1
+A	2021-01-11	12	ramen	Y	2
+A	2021-01-11	12	ramen	Y	2
+B	2021-01-01	15	curry	N	NULL
+B	2021-01-02	15	curry	N	NULL
+B	2021-01-04	10	sushi	N	NULL
+B	2021-01-11	10	sushi	Y	1
+B	2021-01-16	12	ramen	Y	2
+B	2021-02-01	12	ramen	Y	3
+C	2021-01-01	12	ramen	N	NULL
+C	2021-01-01	12	ramen	N	NULL
+C	2021-01-07	12	ramen	N	NULL
